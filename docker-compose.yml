@@ -1,0 +1,289 @@
+x-postgres-env: &postgres-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: fraud
+  POSTGRES_USER: fraud
+  POSTGRES_PASSWORD: fraud
+
+x-kafka-env: &kafka-env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KAFKA_TRANSACTIONS_TOPIC: transactions
+  KAFKA_SCORES_TOPIC: scores
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.9.0
+    networks: [monitoring]
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_HEAP_OPTS: "-Xms128m -Xmx256m"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.9.0
+    depends_on: [zookeeper]
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "9095:9095"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.9.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [monitoring]
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      set -e
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transactions --partitions 3 --replication-factor 1 --config retention.ms=86400000
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic scores --partitions 3 --replication-factor 1 --config retention.ms=86400000
+      kafka-topics --bootstrap-server kafka:9092 --list
+      "
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    profiles: ["ui"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      JAVA_OPTS: "-Xms64m -Xmx256m"
+
+  postgres:
+    image: postgres:16-alpine
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: fraud
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fraud -d fraud"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  data_loader:
+    build: ./data_loader
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [monitoring]
+    environment:
+      <<: *postgres-env
+      CSV_PATH: /data/train.csv
+      FIRST_TEST_MONTH: "2019-05-01"
+    volumes:
+      - ./data:/data:ro
+
+  artifacts-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "mkdir -p /artifacts/models /artifacts/dq_reports && chmod -R a+rwX /artifacts /work /logs"]
+    volumes:
+      - ./artifacts:/artifacts
+      - airflow_work:/work
+      - airflow_logs:/logs
+
+  fraud_detector:
+    build:
+      context: .
+      dockerfile: fraud_detector/Dockerfile
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+      artifacts-init:
+        condition: service_completed_successfully
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *kafka-env
+      MODELS_DIR: /models
+      METRICS_PORT: "8000"
+    volumes:
+      - ./artifacts/models:/models
+
+  score_writer:
+    build: ./score_writer
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      <<: [*kafka-env, *postgres-env]
+      METRICS_PORT: "8001"
+
+  simulator:
+    build: ./simulator
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+    networks: [monitoring]
+    restart: unless-stopped
+    environment:
+      <<: *kafka-env
+      CSV_PATH: /data/train.csv
+      MESSAGES_PER_SECOND: "10"
+      FRAUD_SHARE: "0.006"
+    volumes:
+      - ./data:/data:ro
+
+  airflow:
+    build: ./airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data_loader:
+        condition: service_completed_successfully
+      artifacts-init:
+        condition: service_completed_successfully
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      <<: *postgres-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://fraud:fraud@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__PARALLELISM: "4"
+      AIRFLOW__WEBSERVER__WORKERS: "2"
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+      PYTHONPATH: /opt/airflow
+      WORK_DIR: /opt/airflow/work
+      MODELS_DIR: /opt/airflow/artifacts/models
+      DQ_REPORTS_DIR: /opt/airflow/artifacts/dq_reports
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - ./pipeline:/opt/airflow/pipeline:ro
+      - ./fraud_core:/opt/airflow/fraud_core:ro
+      - ./scripts:/opt/airflow/scripts:ro
+      - ./artifacts:/opt/airflow/artifacts
+      - airflow_work:/opt/airflow/work
+      - airflow_logs:/opt/airflow/logs
+    command:
+      - bash
+      - -c
+      - |
+        airflow db migrate
+        airflow users create --username admin --password admin --firstname Admin --lastname Admin --role Admin --email admin@example.com || true
+        exec airflow standalone
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "-s", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks: [monitoring]
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/scoring.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    networks: [monitoring]
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+networks:
+  monitoring:
+    name: fraud-monitoring
+
+volumes:
+  pgdata:
+  airflow_work:
+  airflow_logs:
+  prometheus_data:
+  grafana_data:

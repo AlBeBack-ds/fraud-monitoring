@@ -1,0 +1,811 @@
+{
+  "uid": "fraud-business",
+  "title": "Бизнес-аналитика фрода",
+  "description": "Срез записанных скоров из PostgreSQL с фильтрами по штату и мерчанту.",
+  "tags": [
+    "fraud",
+    "business"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1s",
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "schemaVersion": 39,
+  "version": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "fraud"
+      ],
+      "asDropdown": false,
+      "title": "Дашборды",
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "state",
+        "label": "Штат",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "postgres"
+        },
+        "query": "SELECT DISTINCT us_state FROM fraud_scores WHERE us_state IS NOT NULL ORDER BY 1",
+        "definition": "SELECT DISTINCT us_state FROM fraud_scores WHERE us_state IS NOT NULL ORDER BY 1",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "type": "query",
+        "name": "merch",
+        "label": "Мерчант",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "postgres"
+        },
+        "query": "SELECT DISTINCT merch FROM fraud_scores WHERE merch IS NOT NULL AND ('__all' IN ($state) OR us_state IN ($state)) ORDER BY 1",
+        "definition": "SELECT DISTINCT merch FROM fraud_scores WHERE merch IS NOT NULL AND ('__all' IN ($state) OR us_state IN ($state)) ORDER BY 1",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Транзакций в выборке",
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT count(*) AS \"Транзакций\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Помечено как фрод",
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT sum(fraud_flag) AS \"Фрод\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "id": 2,
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Доля фрода",
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT 100.0 * avg(fraud_flag) AS \"Доля фрода\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Сумма подозрительных транзакций",
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT coalesce(sum(amount) FILTER (WHERE fraud_flag = 1), 0) AS \"Сумма\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Плотность распределения скоров",
+      "description": "Доля транзакций выбранных штатов и мерчантов в каждом интервале скора шириной 0.05. Ось Y логарифмическая, иначе хвост с высокими скорами не виден рядом с массой около нуля.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT\n  to_char(least(floor(score * 20), 19) / 20.0, 'FM0.00') || '–' ||\n    to_char((least(floor(score * 20), 19) + 1) / 20.0, 'FM0.00') AS \"Скор\",\n  100.0 * count(*) / sum(count(*)) OVER () AS \"Доля транзакций, %\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))\nGROUP BY least(floor(score * 20), 19)\nORDER BY least(floor(score * 20), 19)",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#E0752D"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "showValue": "auto",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 0,
+        "xField": "Скор"
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "TPS выбранных транзакций",
+      "description": "Сколько транзакций выбранных штатов и мерчантов обрабатывается в секунду. Считается по времени записи скора.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, $__interval),\n  count(*) / ($__interval_ms / 1000.0) AS \"TPS\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Доля фрода по категориям, последние 1000 транзакций",
+      "description": "Средняя доля транзакций с fraud_flag = 1 по cat_id среди 1000 последних записанных скоров. Фильтры дашборда сюда не применяются.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "WITH last_scores AS (\n  SELECT cat_id, fraud_flag\n  FROM fraud_scores\n  ORDER BY id DESC\n  LIMIT 1000\n)\nSELECT\n  cat_id AS \"Категория\",\n  100.0 * avg(fraud_flag) AS \"Доля фрода, %\"\nFROM last_scores\nGROUP BY cat_id\nORDER BY 2 DESC",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1,
+            "gradientMode": "none",
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#C4162A"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "showValue": "auto",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 0,
+        "xField": "Категория"
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Доля фрода по размеру суммы",
+      "description": "Свой график. Фрод сосредоточен в крупных платежах, поэтому порог ручной проверки разумно ставить по сумме: видно, начиная с какого размера платежа доля фрода резко растёт.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT\n  CASE\n    WHEN amount < 10 THEN '1. до $10'\n    WHEN amount < 50 THEN '2. $10–50'\n    WHEN amount < 200 THEN '3. $50–200'\n    WHEN amount < 1000 THEN '4. $200–1000'\n    ELSE '5. от $1000'\n  END AS \"Сумма\",\n  100.0 * avg(fraud_flag) AS \"Доля фрода, %\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch)) AND amount IS NOT NULL\nGROUP BY 1\nORDER BY 1",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1,
+            "gradientMode": "none",
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#8F3BB8"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "showValue": "auto",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 0,
+        "xField": "Сумма"
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Сумма подозрительных транзакций в минуту",
+      "description": "Свой график. Денежный объём, который модель предлагает остановить, на фоне общего оборота выбранных штатов и мерчантов.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, '1m'),\n  coalesce(sum(amount) FILTER (WHERE fraud_flag = 1), 0) AS \"Подозрительные, $\",\n  sum(amount) AS \"Все транзакции, $\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 60,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Все транзакции, $"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "table",
+      "title": "Штаты с наибольшей суммой подозрительных транзакций",
+      "description": "Свой график. Куда в первую очередь направлять ручную проверку: штаты, где модель находит больше всего денег под риском.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "postgres"
+          },
+          "refId": "A",
+          "rawSql": "SELECT\n  us_state AS \"Штат\",\n  count(*) AS \"Транзакций\",\n  sum(fraud_flag) AS \"Фрод\",\n  100.0 * avg(fraud_flag) AS \"Доля фрода, %\",\n  coalesce(sum(amount) FILTER (WHERE fraud_flag = 1), 0) AS \"Сумма фрода, $\"\nFROM fraud_scores\nWHERE $__timeFilter(created_at) AND ('__all' IN ($state) OR us_state IN ($state)) AND ('__all' IN ($merch) OR merch IN ($merch))\nGROUP BY us_state\nORDER BY 5 DESC, 2 DESC\nLIMIT 10",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Доля фрода, %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 10
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Сумма фрода, $"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "id": 10,
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 9
+      }
+    }
+  ]
+}

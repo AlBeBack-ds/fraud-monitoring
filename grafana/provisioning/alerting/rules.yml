@@ -1,0 +1,171 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: fraud-scoring
+    folder: Fraud alerts
+    interval: 10s
+    rules:
+      - uid: fraud-share-high
+        title: Доля фрода выше 5%
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 100 * sum(rate(fraud_scorer_flagged_total[1m])) / sum(rate(fraud_scorer_transactions_total[1m]))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings: {mode: dropNN}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [5]}
+        noDataState: OK
+        execErrState: Error
+        for: 30s
+        annotations:
+          summary: Модель помечает как фрод больше 5% транзакций за последнюю минуту
+          description: Обычно доля около 0.5-1%. Резкий рост значит либо атаку, либо сломанную модель или признаки.
+          __dashboardUid__: fraud-scoring
+          __panelId__: "11"
+        labels:
+          severity: warning
+          service: fraud_detector
+
+      - uid: stream-stopped
+        title: Поток транзакций остановился
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(rate(fraud_scorer_transactions_total[1m]))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings: {mode: dropNN}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+        noDataState: Alerting
+        execErrState: Error
+        for: 30s
+        annotations:
+          summary: Скоринг обрабатывает меньше одной транзакции в секунду
+          description: Остановился симулятор, Kafka или сам fraud_detector. Если метрик нет совсем, алерт тоже срабатывает.
+          __dashboardUid__: fraud-scoring
+          __panelId__: "8"
+        labels:
+          severity: critical
+          service: fraud_detector
+
+      - uid: scoring-slow
+        title: Время обработки транзакции выросло
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(fraud_scorer_processing_seconds_bucket[1m])))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings: {mode: dropNN}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.25]}
+        noDataState: OK
+        execErrState: Error
+        for: 30s
+        annotations:
+          summary: p95 времени обработки одной транзакции больше 250 мс
+          description: В норме p95 около 50-80 мс. Скоринг упирается в CPU или модель стала тяжелее.
+          __dashboardUid__: fraud-scoring
+          __panelId__: "9"
+        labels:
+          severity: warning
+          service: fraud_detector
+
+      - uid: writer-stalled
+        title: Запись скоров в PostgreSQL остановилась
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: time() - score_writer_last_write_timestamp_seconds
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings: {mode: dropNN}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [30]}
+        noDataState: Alerting
+        execErrState: Error
+        for: 30s
+        annotations:
+          summary: score_writer больше 30 секунд ничего не записал в fraud_scores
+          description: Остановился score_writer, недоступен PostgreSQL или в топик scores ничего не приходит.
+          __dashboardUid__: fraud-writer
+          __panelId__: "7"
+        labels:
+          severity: critical
+          service: score_writer

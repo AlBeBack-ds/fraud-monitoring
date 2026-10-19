@@ -1,0 +1,32 @@
+{
+  "version": "initial",
+  "threshold": 0.47042723021985533,
+  "train_months": [
+    "2019-01",
+    "2019-02",
+    "2019-03"
+  ],
+  "test_month": "2019-04",
+  "train_rows": 129921,
+  "metrics": {
+    "pr_auc": 0.8308449478574101,
+    "roc_auc": 0.9928054572696661,
+    "f1": 0.782608695652174,
+    "precision": 0.8771186440677966,
+    "recall": 0.7064846416382252,
+    "rows": 51274,
+    "fraud_rate": 0.005714397160354176
+  },
+  "model_params": {
+    "iterations": 300,
+    "depth": 6,
+    "learning_rate": 0.1,
+    "l2_leaf_reg": 3,
+    "max_ctr_complexity": 2,
+    "random_seed": 42,
+    "thread_count": 2,
+    "allow_writing_files": false,
+    "verbose": 0
+  },
+  "trained_at": "2026-10-17T19:24:07+00:00"
+}
